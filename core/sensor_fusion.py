@@ -1,6 +1,6 @@
 """
 sensor_fusion.py
-Mô-đun xử lý và hợp nhất dữ liệu từ các cảm biến:
+Xử lý và hợp nhất dữ liệu từ các cảm biến:
 - GPS (NMEA data parsing)
 - IMU/Compass (azimuth, elevation angles)
 - Laser Rangefinder (distance measurement)
@@ -11,8 +11,7 @@ Chức năng: Lọc nhiễu, hợp nhất dữ liệu (sensor fusion), xử lý 
 
 import numpy as np
 import math
-import statistics
-from datetime import datetime
+
 from collections import deque
 
 class NMEAParser:
@@ -42,7 +41,7 @@ class NMEAParser:
             
             parts = nmea_sentence.strip().split(',')
 
-            if len(parts) < 15 or not parts[1]: # Không có thời gian
+            if len(parts) < 15 or not parts[1]:
                 return None
             
             # Phân tích vĩ độ
@@ -106,7 +105,6 @@ class NMEAParser:
             if len(parts) < 12 or parts[2] != 'A':  # Status phải là 'A' (Active)
                 return None
             
-            # Tương tự GGA cho lat/lon
             lat_raw = float(parts[3])
             lat_deg = int(lat_raw / 100)
             lat_min = lat_raw - (lat_deg * 100)
@@ -138,21 +136,14 @@ class NMEAParser:
     def _verify_checksum(self, nmea_sentence):
         """
         Kiểm tra checksum của chuỗi NMEA
-        
-        Input:
-            nmea_sentence: Chuỗi NMEA
-            
-        Output:
-            bool: True nếu checksum đúng
         """
         if '*' not in nmea_sentence:
             return False
             
         try:
             sentence, checksum = nmea_sentence.split('*')
-            sentence = sentence[1:]  # Bỏ ký tự '
+            sentence = sentence[1:]  # Bỏ '$'
             
-            # Tính checksum bằng XOR
             calc_checksum = 0
             for char in sentence:
                 calc_checksum ^= ord(char)
@@ -164,8 +155,8 @@ class NMEAParser:
         
 class SensorFilter:
     """
-    Lớp lọc nhiễu và làm mịn dữ liệu cảm biến
-    Sử dụng Moving Average và Kalman Filter đơn giản
+    Bộ lọc cảm biến
+    Sử dụng numpy vectorization
     """
     
     def __init__(self, window_size=5):
@@ -173,16 +164,18 @@ class SensorFilter:
         self.gps_buffer = deque(maxlen=window_size)
         self.imu_buffer = deque(maxlen=window_size)
         self.range_buffer = deque(maxlen=window_size)
+
+        # Pre-compute weights cho weighted average (OPTIMIZATION)
+        self.weights = self._compute_weights(window_size)
+    
+    def _compute_weights(self, n):
+        """Pre-compute weights để tái sử dụng"""
+        w = np.arange(1, n + 1, dtype=np.float32)
+        return w / w.sum()
     
     def filter_gps_position(self, gps_data):
         """
         Lọc vị trí GPS bằng moving average
-        
-        Args:
-            gps_data: dict chứa latitude, longitude, altitude
-            
-        Returns:
-            dict: GPS data đã lọc
         """
         if not gps_data or gps_data.get('fix_quality', 0) == 0:
             return None
@@ -192,19 +185,20 @@ class SensorFilter:
         if len(self.gps_buffer) < 2:
             return gps_data
         
-        # Lọc bằng trung bình có trọng số (dữ liệu mới có trọng số cao hơn)
-        weights = np.array([i+1 for i in range(len(self.gps_buffer))])
-        weights = weights / np.sum(weights)
+        # Lấy weights phù hợp với số lượng data hiện tại
+        n = len(self.gps_buffer)
+        weights = self.weights[:n] / self.weights[:n].sum()
         
-        filtered_lat = np.average([d['latitude'] for d in self.gps_buffer], weights=weights)
-        filtered_lon = np.average([d['longitude'] for d in self.gps_buffer], weights=weights)
-        filtered_alt = np.average([d['altitude'] for d in self.gps_buffer], weights=weights)
+        # Vectorized calculation
+        lats = np.array([d['latitude'] for d in self.gps_buffer])
+        lons = np.array([d['longitude'] for d in self.gps_buffer])
+        alts = np.array([d['altitude'] for d in self.gps_buffer])
         
         filtered_data = gps_data.copy()
         filtered_data.update({
-            'latitude': filtered_lat,
-            'longitude': filtered_lon,
-            'altitude': filtered_alt,
+            'latitude': float(np.dot(lats, weights)),
+            'longitude': float(np.dot(lons, weights)),
+            'altitude': float(np.dot(alts, weights)),
             'filtered': True
         })
         
@@ -212,14 +206,7 @@ class SensorFilter:
     
     def filter_imu_angles(self, azimuth, elevation):
         """
-        Lọc góc từ IMU/compass bằng circular mean cho azimuth
-        
-        Args:
-            azimuth: Góc azimuth (độ)
-            elevation: Góc elevation (độ)
-            
-        Returns:
-            tuple: (filtered_azimuth, filtered_elevation)
+        Lọc góc từ IMU/Compass
         """
         imu_data = {'azimuth': azimuth, 'elevation': elevation}
         self.imu_buffer.append(imu_data)
@@ -227,34 +214,29 @@ class SensorFilter:
         if len(self.imu_buffer) < 2:
             return (azimuth, elevation)
         
-        # Lọc azimuth bằng circular mean (do tính chất tuần hoàn 0-360°)
-        azimuths = [d['azimuth'] for d in self.imu_buffer]
-        azimuth_rad = [math.radians(a) for a in azimuths]
+        # Lọc azimuth bằng circular mean
+        azimuths = np.array([d['azimuth'] for d in self.imu_buffer])
+        azimuth_rad = np.radians(azimuths)
         
-        sin_sum = sum(math.sin(a) for a in azimuth_rad)
-        cos_sum = sum(math.cos(a) for a in azimuth_rad)
+        # Vectorized sin/cos
+        sin_sum = np.sin(azimuth_rad).sum()
+        cos_sum = np.cos(azimuth_rad).sum()
         filtered_azimuth = math.degrees(math.atan2(sin_sum, cos_sum))
         
         if filtered_azimuth < 0:
             filtered_azimuth += 360
         
-        # Lọc elevation bằng trung bình thông thường
-        elevations = [d['elevation'] for d in self.imu_buffer]
-        filtered_elevation = statistics.mean(elevations)
+        # Simple mean cho elevation
+        elevations = np.array([d['elevation'] for d in self.imu_buffer])
+        filtered_elevation = float(elevations.mean())
         
         return (filtered_azimuth, filtered_elevation)
     
     def filter_range_distance(self, distance):
         """
-        Lọc khoảng cách từ laser rangefinder
-        
-        Args:
-            distance: Khoảng cách đo được (mét)
-            
-        Returns:
-            float: Khoảng cách đã lọc
+        Lọc khoảng cách từ laser rangefinder với median filter
         """
-        if distance <= 0 or distance > 10000:  # Giới hạn hợp lý
+        if distance <= 0 or distance > 10000:
             return None
         
         self.range_buffer.append(distance)
@@ -262,25 +244,18 @@ class SensorFilter:
         if len(self.range_buffer) < 2:
             return distance
         
-        # Loại bỏ outliers bằng median filter
-        distances = list(self.range_buffer)
-        distances.sort()
+        # Numpy median
+        distances = np.array(list(self.range_buffer))
+        median = float(np.median(distances))
         
-        # Lấy median
-        n = len(distances)
-        if n % 2 == 0:
-            median = (distances[n//2 - 1] + distances[n//2]) / 2
-        else:
-            median = distances[n//2]
+        # Outlier detection
+        threshold = median * 0.1
+        mask = np.abs(distances - median) <= threshold
         
-        # Lọc các giá trị quá xa median (outlier detection)
-        threshold = median * 0.1  # 10% threshold
-        filtered_distances = [d for d in distances if abs(d - median) <= threshold]
-        
-        if not filtered_distances:
+        if not mask.any():
             return distance
         
-        return statistics.mean(filtered_distances)
+        return float(distances[mask].mean())
     
 class SensorFusion:
     """
@@ -296,20 +271,12 @@ class SensorFusion:
         self.last_valid_range = None
     
     def process_gps_data(self, nmea_sentence):
-        """
-        Xử lý dữ liệu GPS từ NMEA sentence
-        
-        Args:
-            nmea_sentence: Chuỗi NMEA
-            
-        Returns:
-            dict: GPS data đã xử lý hoặc None
-        """
+        """Xử lý dữ liệu GPS từ NMEA"""
         gps_data = None
         
-        if nmea_sentence.startswith('$GPGGA') or nmea_sentence.startswith('$GNGGA'):
+        if nmea_sentence.startswith(('$GPGGA', '$GNGGA')):
             gps_data = self.nmea_parser.parse_gga(nmea_sentence)
-        elif nmea_sentence.startswith('$GPRMC') or nmea_sentence.startswith('$GNRMC'):
+        elif nmea_sentence.startswith(('$GPRMC', '$GNRMC')):
             gps_data = self.nmea_parser.parse_rmc(nmea_sentence)
         
         if gps_data:
@@ -322,24 +289,12 @@ class SensorFusion:
         return None
     
     def process_imu_data(self, azimuth_raw, elevation_raw):
-        """
-        Xử lý dữ liệu IMU/Compass
-        
-        Args:
-            azimuth_raw: Góc azimuth thô (độ)
-            elevation_raw: Góc elevation thô (độ)
-            
-        Returns:
-            tuple: (azimuth, elevation) đã lọc
-        """
-        # Validate input ranges
+        """Xử lý dữ liệu IMU/Compass"""
+        # Validate input
         if not (0 <= azimuth_raw <= 360):
-            print(f"Warning: Azimuth {azimuth_raw}° ngoài phạm vi [0, 360]")
             azimuth_raw = azimuth_raw % 360
         
-        if not (-90 <= elevation_raw <= 90):
-            print(f"Warning: Elevation {elevation_raw}° ngoài phạm vi [-90, 90]")
-            elevation_raw = max(-90, min(90, elevation_raw))
+        elevation_raw = np.clip(elevation_raw, -90, 90)
         
         # Áp dụng filter
         filtered_angles = self.sensor_filter.filter_imu_angles(azimuth_raw, elevation_raw)
@@ -348,15 +303,7 @@ class SensorFusion:
         return filtered_angles
     
     def process_range_data(self, distance_raw):
-        """
-        Xử lý dữ liệu laser rangefinder
-        
-        Args:
-            distance_raw: Khoảng cách thô (mét)
-            
-        Returns:
-            float: Khoảng cách đã lọc hoặc None
-        """
+        """Xử lý dữ liệu laser rangefinder"""
         filtered_distance = self.sensor_filter.filter_range_distance(distance_raw)
         if filtered_distance:
             self.last_valid_range = filtered_distance
@@ -364,19 +311,8 @@ class SensorFusion:
         return filtered_distance
     
     def get_fused_sensor_data(self):
-        """
-        Lấy dữ liệu cảm biến đã hợp nhất gần nhất
-        
-        Returns:
-            dict: Dữ liệu hợp nhất hoặc None nếu thiếu dữ liệu
-        """
+        """Lấy dữ liệu cảm biến đã hợp nhất gần nhất"""
         if not all([self.last_valid_position, self.last_valid_angles, self.last_valid_range]):
-            missing = []
-            if not self.last_valid_position: missing.append("GPS")
-            if not self.last_valid_angles: missing.append("IMU")
-            if not self.last_valid_range: missing.append("Range")
-            
-            print(f"Warning: Thiếu dữ liệu từ: {', '.join(missing)}")
             return None
         
         return {
@@ -395,17 +331,11 @@ class SensorFusion:
             'range': {
                 'distance': self.last_valid_range
             },
-            'timestamp': datetime.now().isoformat(),
             'data_quality': self._assess_data_quality()
         }
     
     def _assess_data_quality(self):
-        """
-        Đánh giá chất lượng dữ liệu cảm biến
-        
-        Returns:
-            str: 'good', 'fair', 'poor'
-        """
+        """Đánh giá chất lượng dữ liệu cảm biến"""
         if not self.last_valid_position:
             return 'poor'
         
@@ -419,46 +349,3 @@ class SensorFusion:
             return 'fair'
         else:
             return 'poor'
-
-def test_sensor_fusion():
-    """Hàm test xử lý dữ liệu cảm biến"""
-    fusion = SensorFusion()
-    
-    print("=== TEST XỬ LÝ DỮ LIỆU CẢM BIẾN ===")
-    
-    # Test NMEA parsing
-    test_gga = "$GPGGA,123519,4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,*47"
-    gps_data = fusion.process_gps_data(test_gga)
-    
-    if gps_data:
-        print(f"GPS data: {gps_data['latitude']:.6f}°, {gps_data['longitude']:.6f}°, {gps_data['altitude']}m")
-        print(f"Fix quality: {gps_data['fix_quality']}, Satellites: {gps_data['num_satellites']}, HDOP: {gps_data['hdop']}")
-    
-    # Test IMU data
-    for i in range(5):
-        # Simulate noisy IMU data
-        azimuth = 45.0 + np.random.normal(0, 2)  # 45° ± 2° noise
-        elevation = 10.0 + np.random.normal(0, 1)  # 10° ± 1° noise
-        
-        filtered_angles = fusion.process_imu_data(azimuth, elevation)
-        print(f"IMU {i+1}: Raw({azimuth:.2f}°, {elevation:.2f}°) -> Filtered({filtered_angles[0]:.2f}°, {filtered_angles[1]:.2f}°)")
-    
-    # Test Range data
-    for i in range(5):
-        # Simulate laser rangefinder data
-        distance = 1000.0 + np.random.normal(0, 5)  # 1000m ± 5m noise
-        
-        filtered_distance = fusion.process_range_data(distance)
-        print(f"Range {i+1}: Raw({distance:.2f}m) -> Filtered({filtered_distance:.2f}m)")
-    
-    # Test fused data
-    fused_data = fusion.get_fused_sensor_data()
-    if fused_data:
-        print("\n=== FUSED SENSOR DATA ===")
-        print(f"GPS: {fused_data['gps']['latitude']:.6f}°, {fused_data['gps']['longitude']:.6f}°")
-        print(f"IMU: Az={fused_data['imu']['azimuth']:.2f}°, El={fused_data['imu']['elevation']:.2f}°")
-        print(f"Range: {fused_data['range']['distance']:.2f}m")
-        print(f"Data quality: {fused_data['data_quality']}")
-
-if __name__ == "__main__":
-    test_sensor_fusion()
