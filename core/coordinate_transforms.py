@@ -97,16 +97,13 @@ class CoordinateTransforms:
         lat_rad = math.atan2(Z, p * (1 - self.wgs84.E_SQUARED))
         
         # Lặp tối đa 5 lần (thường hội tụ sau 2-3 lần)
-        for _ in range (5):
+        for _ in range(5):
             sin_lat = math.sin(lat_rad)
             N = self.wgs84.A / math.sqrt(1 - self.wgs84.E_SQUARED * sin_lat**2)
 
             alt = p / math.cos(lat_rad) - N
 
             lat_rad_new = math.atan2(Z, p * (1 - self.wgs84.E_SQUARED * N / (N + alt)))
-
-            lat_rad_new = math.atan2(Z, p * (1 - self.wgs84.E_SQUARED * N / (N + alt)))
-            
             
             if abs(lat_rad_new - lat_rad) < 1e-12:
                 break
@@ -118,7 +115,7 @@ class CoordinateTransforms:
         
         return (math.degrees(lat_rad), math.degrees(lon_rad), alt)
     
-    def _get_rotation_matrix_enu_to_ecef(self, lat_deg, lon_deg):
+    def _get_rotation_matrix_ecef_to_enu(self, lat_deg, lon_deg):
         """
         Tính ma trận quay chuyển ECEF sang ENU (tối ưu hóa với cache)
 
@@ -172,7 +169,7 @@ class CoordinateTransforms:
         delta = target_ecef - observer_ecef
 
         # Ma trận quay
-        R = self._get_rotation_matrix_enu_to_ecef(observer_geodetic[0], observer_geodetic[1])
+        R = self._get_rotation_matrix_ecef_to_enu(observer_geodetic[0], observer_geodetic[1])
 
         # Áp dụng phép quay
         enu = R @ delta
@@ -188,13 +185,12 @@ class CoordinateTransforms:
             observer_geodetic: tuple (lat_deg, lon_deg, height_m) tọa độ người quan sát
 
         Output:
-            tuple: (X, Y, Z) tọa độ ECEF
+            np.ndarray: [X, Y, Z] tọa độ ECEF
         """
         # Chuyển sang numpy array nếu cần
         if not isinstance(enu_coords, np.ndarray):
             enu_coords = np.array(enu_coords)
 
-        E, N, U = enu_coords
         observer_ecef = self.geodetic_to_ecef(*observer_geodetic)
 
         # Ma trận quay ENU → ECEF (transpose của ECEF → ENU)
