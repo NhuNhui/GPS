@@ -11,25 +11,22 @@ Chức năng:
 
 """
 
-import sys
-sys.path.append('..')
-
 import numpy as np
 import statistics
 from datetime import datetime
 from pathlib import Path
 import json
 
-# Import core modules
 from core.coordinate_transforms import CoordinateTransforms
 from core.sensor_fusion import SensorFusion
 from core.target_calculator import TargetCalculator
 
 
 class SimulationResult:
-    """
-    Lớp lưu trữ kết quả mô phỏng cho một mục tiêu
-    """
+    """Lưu trữ kết quả mô phỏng cho một mục tiêu"""
+
+    __slots__ = ['target_id', 'ground_truth', 'calculated_position', 
+                 'errors', 'measurements', 'calculation_time']
     
     def __init__(self, target_id):
         self.target_id = target_id
@@ -40,31 +37,26 @@ class SimulationResult:
         self.calculation_time = 0
     
     def calculate_errors(self):
-        """
-        Tính toán các loại sai số
-        
-        Output:
-            dict: Các chỉ số sai số
-        """
+        """Tính toán các loại sai số"""
         if not self.ground_truth or not self.calculated_position:
             return None
         
         gt = self.ground_truth
         calc = self.calculated_position['target_geodetic']
         
-        # Sai số vị trí (geodetic)
+        # Sai số geodetic
         lat_error = abs(calc['latitude'] - gt['true_latitude'])
         lon_error = abs(calc['longitude'] - gt['true_longitude'])
         alt_error = abs(calc['altitude'] - gt['true_altitude'])
         
-        # Chuyển sang mét (xấp xỉ)
-        # 1 độ vĩ độ ≈ 111km, 1 độ kinh độ ≈ 111km * cos(lat)
+        # Chuyển sang mét (vectorized)
         lat_error_m = lat_error * 111000
-        lon_error_m = lon_error * 111000 * np.cos(np.radians(gt['true_latitude']))
+        cos_lat = np.cos(np.radians(gt['true_latitude']))
+        lon_error_m = lon_error * 111000 * cos_lat
         
-        # Sai số khoảng cách 2D và 3D
-        horizontal_error = np.sqrt(lat_error_m**2 + lon_error_m**2)
-        total_error_3d = np.sqrt(lat_error_m**2 + lon_error_m**2 + alt_error**2)
+        # Sai số khoảng cách (numpy norm)
+        horizontal_error = float(np.sqrt(lat_error_m**2 + lon_error_m**2))
+        total_error_3d = float(np.sqrt(lat_error_m**2 + lon_error_m**2 + alt_error**2))
         
         self.errors = {
             'latitude_error_deg': lat_error,
@@ -94,17 +86,9 @@ class SimulationResult:
 
 
 class Simulator:
-    """
-    Engine mô phỏng chính
-    """
+    """Engine mô phỏng"""
     
     def __init__(self, coordinate_system='ENU'):
-        """
-        Initialize simulator
-        
-        Input:
-            coordinate_system: 'ENU' hoặc 'NED'
-        """
         self.coord_transform = CoordinateTransforms()
         self.sensor_fusion = SensorFusion()
         self.calculator = TargetCalculator(coordinate_system)
@@ -112,16 +96,7 @@ class Simulator:
         self.statistics = {}
     
     def run_scenario(self, scenario, use_sensor_fusion=True):
-        """
-        Chạy một kịch bản mô phỏng hoàn chỉnh
-        
-        Input:
-            scenario: dict kịch bản từ ScenarioGenerator
-            use_sensor_fusion: Có sử dụng sensor fusion hay không
-            
-        Output:
-            list: Danh sách SimulationResult
-        """
+        """Chạy kịch bản mô phỏng hoàn chỉnh"""
         print(f"\n{'='*60}")
         print(f"Running Scenario: {scenario['scenario_id']}")
         print(f"{'='*60}")
@@ -135,16 +110,14 @@ class Simulator:
         
         self.results = []
         
-        # Xử lý từng mục tiêu
         for target_data in scenario['targets']:
             result = SimulationResult(target_data['target_id'])
             
             print(f"\nProcessing target: {target_data['target_id']}")
             
-            # Ground truth
             gt = target_data['ground_truth']
             
-            # Tính tọa độ ground truth từ góc và khoảng cách
+            # Tính ground truth position
             start_time = datetime.now()
             gt_position = self.calculator.calculate_target_position(
                 observer_geodetic,
@@ -162,54 +135,50 @@ class Simulator:
                 'true_altitude': gt_position['target_geodetic']['altitude']
             }
             
-            # Xử lý measurements
             measurements = target_data['measurements']
             result.measurements = measurements
             
             if use_sensor_fusion:
-                # Sử dụng sensor fusion để lọc nhiễu
-                filtered_measurements = []
-                
+                # Process với sensor fusion
                 for measurement in measurements:
                     # Process GPS
                     gps_nmea = self._convert_to_nmea_gga(measurement['gps'])
                     self.sensor_fusion.process_gps_data(gps_nmea)
                     
                     # Process IMU
-                    filtered_angles = self.sensor_fusion.process_imu_data(
+                    self.sensor_fusion.process_imu_data(
                         measurement['imu']['azimuth'],
                         measurement['imu']['elevation']
                     )
                     
                     # Process Range
-                    filtered_distance = self.sensor_fusion.process_range_data(
+                    self.sensor_fusion.process_range_data(
                         measurement['range']['distance']
                     )
                     
-                    filtered_measurements.append({
-                        'azimuth': filtered_angles[0],
-                        'elevation': filtered_angles[1],
-                        'distance': filtered_distance
-                    })
-                
-                # Lấy measurement cuối cùng (đã được lọc tốt nhất)
-                if filtered_measurements:
-                    final_measurement = filtered_measurements[-1]
-                    
-                    # Lấy GPS đã lọc
-                    fused_data = self.sensor_fusion.get_fused_sensor_data()
-                    if fused_data:
-                        observer_filtered = (
-                            fused_data['gps']['latitude'],
-                            fused_data['gps']['longitude'],
-                            fused_data['gps']['altitude']
-                        )
-                    else:
-                        observer_filtered = observer_geodetic
+                # Lấy fused data
+                fused_data = self.sensor_fusion.get_fused_sensor_data()
+                if fused_data:
+                    observer_filtered = (
+                        fused_data['gps']['latitude'],
+                        fused_data['gps']['longitude'],
+                        fused_data['gps']['altitude']
+                    )
+                    final_measurement = {
+                        'azimuth': fused_data['imu']['azimuth'],
+                        'elevation': fused_data['imu']['elevation'],
+                        'distance': fused_data['range']['distance']
+                    }
                 else:
-                    continue
+                    observer_filtered = observer_geodetic
+                    m = measurements[-1]
+                    final_measurement = {
+                        'azimuth': m['imu']['azimuth'],
+                        'elevation': m['imu']['elevation'],
+                        'distance': m['range']['distance']
+                    }
             else:
-                # Không dùng fusion - lấy measurement đầu tiên
+                # Không fusion - lấy measurement đầu tiên
                 measurement = measurements[0]
                 final_measurement = {
                     'azimuth': measurement['imu']['azimuth'],
@@ -222,7 +191,7 @@ class Simulator:
                     measurement['gps']['altitude']
                 )
             
-            # Tính toán vị trí mục tiêu
+            # Tính toán vị trí
             calculated = self.calculator.calculate_target_position(
                 observer_filtered,
                 final_measurement['azimuth'],
@@ -237,18 +206,11 @@ class Simulator:
             result.calculate_errors()
             
             # In kết quả
-            print(f"  Ground Truth: "
-                  f"Lat={result.ground_truth['true_latitude']:.6f}°, "
-                  f"Lon={result.ground_truth['true_longitude']:.6f}°, "
-                  f"Alt={result.ground_truth['true_altitude']:.1f}m")
-            
-            print(f"  Calculated:   "
-                  f"Lat={calculated['target_geodetic']['latitude']:.6f}°, "
-                  f"Lon={calculated['target_geodetic']['longitude']:.6f}°, "
-                  f"Alt={calculated['target_geodetic']['altitude']:.1f}m")
-            
+            print(f"  Ground Truth: Lat={result.ground_truth['true_latitude']:.6f}°, "
+                  f"Lon={result.ground_truth['true_longitude']:.6f}°")
+            print(f"  Calculated:   Lat={calculated['target_geodetic']['latitude']:.6f}°, "
+                  f"Lon={calculated['target_geodetic']['longitude']:.6f}°")
             print(f"  Horizontal Error: {result.errors['horizontal_error_m']:.2f}m")
-            print(f"  3D Error: {result.errors['total_error_3d_m']:.2f}m")
             print(f"  Calculation time: {result.calculation_time*1000:.2f}ms")
             
             self.results.append(result)
@@ -259,19 +221,10 @@ class Simulator:
         return self.results
     
     def _convert_to_nmea_gga(self, gps_data):
-        """
-        Chuyển GPS data thành NMEA GGA sentence
-        
-        Input:
-            gps_data: dict GPS data
-            
-        Output:
-            str: NMEA GGA sentence
-        """
+        """Chuyển GPS data thành NMEA GGA sentence"""
         lat = gps_data['latitude']
         lon = gps_data['longitude']
         
-        # Convert to NMEA format
         lat_deg = int(abs(lat))
         lat_min = (abs(lat) - lat_deg) * 60
         lat_str = f"{lat_deg:02d}{lat_min:07.4f}"
@@ -291,35 +244,36 @@ class Simulator:
         return nmea
     
     def _calculate_statistics(self):
-        """Tính thống kê tổng hợp cho kịch bản"""
+        """Tính thống kê"""
         if not self.results:
             return
         
-        horizontal_errors = [r.errors['horizontal_error_m'] for r in self.results]
-        error_3d = [r.errors['total_error_3d_m'] for r in self.results]
-        calc_times = [r.calculation_time * 1000 for r in self.results]  # ms
+        # Vectorized extraction
+        h_errors = np.array([r.errors['horizontal_error_m'] for r in self.results])
+        e3d = np.array([r.errors['total_error_3d_m'] for r in self.results])
+        times = np.array([r.calculation_time * 1000 for r in self.results])
         
         self.statistics = {
             'num_targets': len(self.results),
             'horizontal_error': {
-                'mean': statistics.mean(horizontal_errors),
-                'median': statistics.median(horizontal_errors),
-                'std': statistics.stdev(horizontal_errors) if len(horizontal_errors) > 1 else 0,
-                'min': min(horizontal_errors),
-                'max': max(horizontal_errors)
+                'mean': float(h_errors.mean()),
+                'median': float(np.median(h_errors)),
+                'std': float(h_errors.std()) if len(h_errors) > 1 else 0,
+                'min': float(h_errors.min()),
+                'max': float(h_errors.max())
             },
             '3d_error': {
-                'mean': statistics.mean(error_3d),
-                'median': statistics.median(error_3d),
-                'std': statistics.stdev(error_3d) if len(error_3d) > 1 else 0,
-                'min': min(error_3d),
-                'max': max(error_3d)
+                'mean': float(e3d.mean()),
+                'median': float(np.median(e3d)),
+                'std': float(e3d.std()) if len(e3d) > 1 else 0,
+                'min': float(e3d.min()),
+                'max': float(e3d.max())
             },
             'calculation_time_ms': {
-                'mean': statistics.mean(calc_times),
-                'median': statistics.median(calc_times),
-                'min': min(calc_times),
-                'max': max(calc_times)
+                'mean': float(times.mean()),
+                'median': float(np.median(times)),
+                'min': float(times.min()),
+                'max': float(times.max())
             }
         }
     
@@ -338,29 +292,16 @@ class Simulator:
         print(f"  Mean:   {self.statistics['horizontal_error']['mean']:.2f}")
         print(f"  Median: {self.statistics['horizontal_error']['median']:.2f}")
         print(f"  Std:    {self.statistics['horizontal_error']['std']:.2f}")
-        print(f"  Range:  [{self.statistics['horizontal_error']['min']:.2f}, "
-              f"{self.statistics['horizontal_error']['max']:.2f}]")
         
         print(f"\n3D Error (m):")
         print(f"  Mean:   {self.statistics['3d_error']['mean']:.2f}")
         print(f"  Median: {self.statistics['3d_error']['median']:.2f}")
-        print(f"  Std:    {self.statistics['3d_error']['std']:.2f}")
-        print(f"  Range:  [{self.statistics['3d_error']['min']:.2f}, "
-              f"{self.statistics['3d_error']['max']:.2f}]")
         
         print(f"\nCalculation Time (ms):")
         print(f"  Mean:   {self.statistics['calculation_time_ms']['mean']:.2f}")
-        print(f"  Median: {self.statistics['calculation_time_ms']['median']:.2f}")
-        print(f"  Range:  [{self.statistics['calculation_time_ms']['min']:.2f}, "
-              f"{self.statistics['calculation_time_ms']['max']:.2f}]")
     
     def export_results(self, filepath):
-        """
-        Xuất kết quả ra file JSON
-        
-        Input:
-            filepath: Đường dẫn file output
-        """
+        """Xuất kết quả ra file JSON"""
         filepath = Path(filepath)
         filepath.parent.mkdir(parents=True, exist_ok=True)
         
@@ -374,33 +315,3 @@ class Simulator:
             json.dump(export_data, f, indent=2, ensure_ascii=False)
         
         print(f"\nResults exported to: {filepath}")
-
-
-def test_simulator():
-    """Test simulator với kịch bản mẫu"""
-    import sys
-    sys.path.append('..')
-    from simulation.scenario_generator import ScenarioGenerator
-    
-    print("=== TEST SIMULATOR ===\n")
-    
-    # Tạo kịch bản
-    generator = ScenarioGenerator(seed=42)
-    observer = generator.create_observer_position()
-    scenario = generator.create_scenario(observer, num_targets=5, add_noise=True)
-    
-    # Chạy mô phỏng
-    simulator = Simulator(coordinate_system='ENU')
-    results = simulator.run_scenario(scenario, use_sensor_fusion=True)
-    
-    # In thống kê
-    simulator.print_statistics()
-    
-    # Xuất kết quả
-    simulator.export_results('data/simulation_results.json')
-    
-    print("\n=== TEST COMPLETED ===")
-
-
-if __name__ == "__main__":
-    test_simulator()
