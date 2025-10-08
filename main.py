@@ -106,7 +106,6 @@ class GPSTargetApp:
             print("\n" + "="*60)
             choice = input("\nTiếp tục? (y/n): ").strip().lower()
             if choice != 'y':
-                print("\nCảm ơn đã sử dụng GPS Target System!")
                 break
     
     def display_results(self, result):
@@ -123,7 +122,7 @@ class GPSTargetApp:
         print(f"  Kinh độ: {target['longitude']:.6f}°")
         print(f"  Độ cao:  {target['altitude']:.1f}m")
         
-        print("\n✓ KIỂM TRA ĐỘ CHÍNH XÁC:")
+        print("\nKIỂM TRA ĐỘ CHÍNH XÁC:")
         print(f"  Distance error:  {verification['distance_error']:.3f}m")
         print(f"  Azimuth error:   {verification['azimuth_error']:.4f}°")
         print(f"  Elevation error: {verification['elevation_error']:.4f}°")
@@ -234,8 +233,8 @@ def run_batch_mode():
 def main():
     """Main entry point"""
     print("\n" + "="*60)
-    print("GPS TARGET SYSTEM")
-    print("    Tính toán tọa độ mục tiêu từ GPS + góc ngắm + khoảng cách")
+    print(" "*10 + "GPS TARGET SYSTEM")
+    print(" "*5 + "Tính toán tọa độ mục tiêu từ GPS + góc ngắm + khoảng cách")
     print("="*60)
     
     print("\nChọn chế độ:")
@@ -265,7 +264,6 @@ def main():
         print(f"\nLỗi: {e}")
         import traceback
         traceback.print_exc()
-
 
 if __name__ == "__main__":
     main()
