@@ -1,6 +1,6 @@
 """
 gps_target_system.py
-Module chính của hệ thống, kết hợp các thành phần để tính toán tọa độ mục tiêu
+Module chính của hệ thống - wrapper đơn giản cho TargetCalculator
 
 Chức năng:
 - Khởi tạo và quản lý các thành phần của hệ thống
@@ -9,24 +9,24 @@ Chức năng:
 """
 
 from .coordinate_transforms import CoordinateTransforms
-from .target_calculator import DirectionVectors
+from .target_calculator import TargetCalculator
 from .sensor_fusion import SensorFusion
 
 class GPSTargetSystem:
     """
-    Lớp chính của hệ thống, tích hợp các module để tính toán tọa độ mục tiêu
+    Lớp wrapper chính của hệ thống -> Giảm độ phức tạp, tránh trùng lặp logic
     """
     
     def __init__(self, coordinate_system='ENU'):
         """
-        Khởi tạo hệ thống với các thành phần cần thiết
+        Khởi tạo hệ thống
         
         Input:
             coordinate_system: Hệ tọa độ sử dụng ('ENU' hoặc 'NED')
         """
-        self.coordinate_transforms = CoordinateTransforms()
-        self.direction_vectors = DirectionVectors(coordinate_system)
+        self.calculator = TargetCalculator(coordinate_system)
         self.sensor_fusion = SensorFusion()
+        self.coordinate_system = coordinate_system
         
     def calculate_target_position(self, observer_lat, observer_lon, observer_alt,
                                 azimuth, elevation, distance):
@@ -42,39 +42,71 @@ class GPSTargetSystem:
             distance: Khoảng cách đến mục tiêu (mét)
             
         Output:
-            tuple: (target_lat, target_lon, target_alt) - Tọa độ mục tiêu
+            dict: Kết quả tính toán chi tiết
         """
-        # 1. Chuyển tọa độ quan sát viên sang ECEF
-        observer_ecef = self.coordinate_transforms.geodetic_to_ecef(
-            observer_lat, observer_lon, observer_alt
+        # Validate input
+        self.validate_input_data(observer_lat, observer_lon, observer_alt, azimuth, elevation, distance)
+
+        # Gọi trực tiếp TargetCalculator
+        observer_geodetic = (observer_lat, observer_lon, observer_alt)
+        result = self.calculator.calculate_target_position(observer_geodetic, azimuth, elevation, distance)
+        
+        return result
+    
+    def calculate_target_with_fusion(self, gps_data, imu_data, range_data):
+        """
+        Tính tọa độ mục tiêu với sensor fusion
+
+        Input:
+            gps_data: dict {'latitude', 'longitude', 'altitude', ...}
+            imu_data: dict {'azimuth', 'elevation'}
+            range_data: dict {'distance'}
+
+        Output:
+            dict: Kết quả với thông tin fusion
+        """
+        # Process qua sensor fusion
+        if 'nmea_sentence' in gps_data:
+            processed_gps = self.sensor_fusion.process_gps_data(gps_data['nmea_sentence'])
+        else:
+            processed_gps = gps_data
+
+        if not processed_gps:
+            raise ValueError("GPS data không hợp lệ")
+        
+        # Process IMU và Range
+        filtered_angles = self.sensor_fusion.process_imu_data(
+            imu_data['azimuth'],
+            imu_data['elevation']
         )
         
-        # 2. Tính vector định hướng từ góc ngắm
-        direction_vector = self.direction_vectors.angles_to_vector(azimuth, elevation)
+        filtered_distance = self.sensor_fusion.process_range_data(
+            range_data['distance']
+        )
         
-        # 3. Tính vector dịch chuyển trong hệ cục bộ (ENU/NED)
-        displacement_local = tuple(d * distance for d in direction_vector)
+        if filtered_distance is None:
+            raise ValueError("Range data không hợp lệ")
         
-        # 4. Chuyển vector dịch chuyển sang ECEF
-        observer_geodetic = (observer_lat, observer_lon, observer_alt)
-        if self.direction_vectors.coordinate_system == 'ENU':
-            displacement_ecef = self.coordinate_transforms.enu_to_ecef(
-                displacement_local,
-                observer_geodetic
-            )
-        else:  # NED
-            displacement_ecef = self.coordinate_transforms.ned_to_ecef(
-                displacement_local,
-                observer_geodetic
-            )
-            
-        # 5. Tính tọa độ mục tiêu trong ECEF
-        target_ecef = tuple(o + d for o, d in zip(observer_ecef, displacement_ecef))
+        # Tính toán với dữ liệu đã lọc
+        result = self.calculate_target_position(
+            processed_gps['latitude'],
+            processed_gps['longitude'],
+            processed_gps['altitude'],
+            filtered_angles[0],
+            filtered_angles[1],
+            filtered_distance
+        )
         
-        # 6. Chuyển về tọa độ địa lý
-        target_position = self.coordinate_transforms.ecef_to_geodetic(*target_ecef)
+        # Thêm thông tin fusion
+        result['sensor_fusion'] = {
+            'data_quality': self.sensor_fusion._assess_data_quality(),
+            'gps_filtered': processed_gps.get('filtered', False),
+            'original_azimuth': imu_data['azimuth'],
+            'original_elevation': imu_data['elevation'],
+            'original_distance': range_data['distance']
+        }
         
-        return target_position
+        return result
     
     def validate_input_data(self, lat, lon, alt, azimuth, elevation, distance):
         """
@@ -83,26 +115,36 @@ class GPSTargetSystem:
         Raises:
             ValueError nếu dữ liệu không hợp lệ
         """
-        # Kiểm tra vĩ độ
         if not -90 <= lat <= 90:
-            raise ValueError(f"Vĩ độ {lat} nằm ngoài khoảng hợp lệ [-90, 90]")
+            raise ValueError(f"Vĩ độ {lat} nằm ngoài [-90, 90]")
             
-        # Kiểm tra kinh độ
         if not -180 <= lon <= 180:
-            raise ValueError(f"Kinh độ {lon} nằm ngoài khoảng hợp lệ [-180, 180]")
+            raise ValueError(f"Kinh độ {lon} nằm ngoài [-180, 180]")
             
-        # Kiểm tra độ cao
-        if alt < -1000:  # Giả sử độ cao tối thiểu là -1000m (Biển Chết ~ -430m)
+        if alt < -1000:
             raise ValueError(f"Độ cao {alt}m quá thấp")
             
-        # Kiểm tra góc phương vị
         if not 0 <= azimuth < 360:
-            raise ValueError(f"Góc phương vị {azimuth} phải nằm trong khoảng [0, 360)")
+            raise ValueError(f"Azimuth {azimuth} phải trong [0, 360)")
             
-        # Kiểm tra góc ngẩng
         if not -90 <= elevation <= 90:
-            raise ValueError(f"Góc ngẩng {elevation} phải nằm trong khoảng [-90, 90]")
+            raise ValueError(f"Elevation {elevation} phải trong [-90, 90]")
             
-        # Kiểm tra khoảng cách
         if distance <= 0:
-            raise ValueError(f"Khoảng cách {distance} phải lớn hơn 0")
+            raise ValueError(f"Distance {distance} phải > 0")
+    
+    def calculate_inverse(self, observer_lat, observer_lon, observer_alt,
+                         target_lat, target_lon, target_alt):
+        """
+        Bài toán ngược: Tính góc và khoảng cách từ 2 điểm
+        
+        Output:
+            dict: {azimuth, elevation, distance, ...}
+        """
+        observer_geodetic = (observer_lat, observer_lon, observer_alt)
+        target_geodetic = (target_lat, target_lon, target_alt)
+        
+        return self.calculator.calculate_bearing_distance(
+            observer_geodetic, 
+            target_geodetic
+        )
