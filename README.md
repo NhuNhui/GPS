@@ -1,5 +1,11 @@
 # GPS Target System - Hệ thống tính toán tọa độ mục tiêu
 
+> **Đề tài:** Xây dựng thuật toán tính toán tọa độ mục tiêu từ dữ liệu GPS, góc ngắm và khoảng cách  
+> **Giai đoạn:** 1 - Đồ án Kỹ thuật Máy tính  
+> **HCMUT - 2024/2025**
+
+---
+
 ## Tổng quan
 
 ### Giới thiệu
@@ -11,68 +17,42 @@ Hệ thống GPS Target Calculator là một ứng dụng tính toán tọa đ�
 
 Hệ thống chuyển đổi các dữ liệu này thành **tọa độ địa lý chính xác** (latitude, longitude, altitude) của mục tiêu, có thể hiển thị trên bản đồ số.
 
-### Điểm nổi bật
+## Cài đặt nhanh
 
-**Độ chính xác cao:** Error < 0.01m trong điều kiện lý tưởng  
-**Hiệu suất tốt:** 2-5x nhanh hơn nhờ tối ưu với NumPy  
-**Sensor Fusion:** Lọc nhiễu tự động từ GPS, IMU, Laser  
-**Visualization:** Bản đồ web responsive, interactive với Leaflet.js  
-**Đa hệ tọa độ:** Hỗ trợ ECEF, ENU, NED, Geodetic (WGS-84)  
-**Export:** GeoJSON, JSON, HTML cho GIS tools
+### Bước 1: Kiểm tra Python
+
+```bash
+python --version
+# Cần Python 3.8+
+```
+
+Nếu chưa có Python hoặc phiên bản Python không phải từ 3.8, tải Python tại: https://www.python.org/downloads/
+
+### Bước 2: Cài đặt thư viện
+
+```bash
+# Thư viện bắt buộc
+pip install numpy
+
+# Thư viện cho visualization (khuyến nghị)
+pip install matplotlib
+
+# Cài đặt đầy đủ thư viện
+pip install numpy matplotlib
+
+# Cài đặt với requirements.txt
+pip install -r requirement.txt
+```
+
+### Bước 3: Chạy chương trình
+
+```bash
+python main.py
+```
 
 ---
 
-## Tính năng chính
-
-### 1. Tính toán chính xác
-- Chuyển đổi góc azimuth/elevation thành vector định hướng 3D
-- Tính toán vị trí mục tiêu với độ chính xác cao
-- Chuyển đổi giữa các hệ tọa độ: Geodetic ↔ ECEF ↔ ENU ↔ NED
-- Hỗ trợ ellipsoid WGS-84 chuẩn quốc tế
-
-### 2. Sensor Fusion (Lọc nhiễu)
-- Lọc nhiễu GPS (moving average, weighted filter)
-- Lọc nhiễu IMU (circular mean cho azimuth)
-- Lọc nhiễu Laser (median filter, outlier detection)
-- Đánh giá chất lượng dữ liệu tự động
-
-### 3. Visualization
-- **Bản đồ web interactive** (Leaflet.js):
-   - Responsive design (mobile-friendly)
-   - Click markers để xem thông tin
-   - Zoom, pan, scale bar
-   - Tự động tính distance/bearing/elevation
-
-- **Matplotlib plots:**
-   - Bản đồ 2D với observer và targets
-   - Elevation profile
-   - Error distribution charts
-
-### 4. Multiple Modes
-- **Interactive Mode:** Nhập dữ liệu từ bàn phím
-- **Demo Mode:** Dữ liệu mẫu sẵn có
-- **Batch Mode:** Xử lý nhiều targets cùng lúc
-
-### 5. Export & Integration
-- GeoJSON cho QGIS, ArcGIS
-- HTML maps có thể share
-- JSON results cho data analysis
-
-## Yêu cầu hệ thống
-
-### Python Environment
-- Python 3.8 trở lên
-- Các thư viện Python:
-  ```
-  numpy
-  matplotlib
-  ```
-
-### Web Viewer (Leaflet.js)
-- Trình duyệt web hiện đại (Chrome, Firefox, Safari, Edge)
-- Kết nối internet (để tải tiles bản đồ OpenStreetMap)
-
-## Hướng dẫn cài đặt
+## Hướng dẫn cài đặt chi tiết
 
 ### Bước 1: Kiểm tra Python
 
@@ -80,7 +60,7 @@ Hệ thống chuyển đổi các dữ liệu này thành **tọa độ địa l
 python --version
 ```
 
-Nếu chưa có Python, tải tại: https://www.python.org/downloads/
+Nếu chưa có Python hoặc phiên bản Python không phải từ 3.8, tải Python tại: https://www.python.org/downloads/
 
 ### Bước 2: Clone/Download project
 
@@ -127,172 +107,60 @@ pip install -r requirements.txt
 
 ---
 
-## Hướng dẫn sử dụng
+## 📖 Hướng dẫn sử dụng
 
-### Cách 1: Interactive Mode
-
-#### Bước 1: Khởi chạy chương trình
+### Cách 1: Demo Mode (Nhanh nhất)
 
 ```bash
 python main.py
+# Chọn: 1. Demo
 ```
 
-#### Bước 2: Chọn mode
+**Kết quả:**
 ```
-         GPS TARGET SYSTEM
-   Tính toán tọa độ mục tiêu từ GPS + góc ngắm + khoảng cách
+GIAI ĐOẠN 1 - ĐỒ ÁN KỸ THUẬT MÁY TÍNH
+Tính toán tọa độ mục tiêu 2D
 ============================================================
 
-Chọn chế độ:
-  1. Interactive Mode (Nhập tay)
-  2. Demo Mode (Dữ liệu mẫu)
-  3. Batch Mode (Nhiều mục tiêu)
-  4. Exit
+📝 DỮ LIỆU ĐẦU VÀO:
+  Vị trí quan sát: 10.762622°, 106.660172°
+  Góc phương vị: 45°
+  Khoảng cách: 1000m
 
-Lựa chọn (1-4): 1
-```
-
-#### Bước 3: Nhập dữ liệu Observer
-
-```
-📍 OBSERVER POSITION (Vị trí quan sát)
-------------------------------------------------------------
-  Vĩ độ (Latitude, độ):  10.762622
-  Kinh độ (Longitude, độ): 106.660172
-  Độ cao (Altitude, mét):  10
-```
-
-**Ghi chú:**
-- Vĩ độ: -90 đến +90 (Bắc dương, Nam âm)
-- Kinh độ: -180 đến +180 (Đông dương, Tây âm)
-- Độ cao: tính từ mực nước biển (mét)
-
-#### Bước 4: Nhập thông tin ngắm
-
-```
-🎯 TARGET INFORMATION (Thông tin ngắm mục tiêu)
-------------------------------------------------------------
-  Góc phương vị (Azimuth, 0-360°):   45
-  Góc ngẩng (Elevation, -90 đến 90°): 30
-  Khoảng cách (Distance, mét):      1000
-```
-
-**Ghi chú:**
-- **Azimuth (Phương vị):**
-  - 0° = Bắc (North)
-  - 90° = Đông (East)
-  - 180° = Nam (South)
-  - 270° = Tây (West)
-  
-- **Elevation (Góc ngẩng):**
-  - 0° = Ngang
-  - +90° = Thẳng đứng lên
-  - -90° = Thẳng đứng xuống
-  
-- **Distance:** Khoảng cách thẳng (line of sight) tính bằng mét
-
-#### Bước 5: Xem kết quả
-
-```
 ⏳ Đang tính toán...
 
 ============================================================
 ✅ KẾT QUẢ TÍNH TOÁN
 ============================================================
 
-📍 TỌA ĐỘ MỤC TIÊU:
-  Vĩ độ:   10.768123°
+TỌA ĐỘ MỤC TIÊU (2D):
+  Vĩ độ:  10.768123°
   Kinh độ: 106.665789°
-  Độ cao:  510.0m
 
-✓ KIỂM TRA ĐỘ CHÍNH XÁC:
-  Distance error:  0.003m
-  Azimuth error:   0.0001°
-  Elevation error: 0.0001°
-  
-  ✅ Độ chính xác: EXCELLENT
+Độ chính xác:
+  Sai số: 0.003m
+  → Độ chính xác: XUẤT SẮC
 
-🗺️  Đang tạo bản đồ...
-✅ Bản đồ đã được lưu: output/result_map.html
+Đang tạo bản đồ 2D...
+Đã lưu bản đồ: output/phase1_map.png
 ```
 
-#### Bước 6: Xem bản đồ
-
-Browser sẽ tự động mở file `output/result_map.html` với:
-- 🟢 Marker xanh: Vị trí quan sát
-- 🔴 Marker đỏ: Mục tiêu
-- ➖ Đường nét đứt: Line of sight
-- 📊 Panel thông tin: Distance, bearing, elevation
-
-**Tương tác với bản đồ:**
-- Click markers để xem thông tin chi tiết
-- Scroll để zoom in/out
-- Drag để di chuyển bản đồ
-- Scale bar hiển thị tỷ lệ
-
----
-
-### Cách 2: Demo Mode (Nhanh nhất)
-
-#### Chạy demo với dữ liệu mẫu:
+### Cách 2: Interactive Mode
 
 ```bash
 python main.py
-# Chọn: 2. Demo Mode
+# Chọn: 2. Interactive
 ```
 
-Demo sẽ tự động:
-1. Sử dụng vị trí mặc định (HCMUT)
-2. Tính toán mục tiêu mẫu
-3. Hiển thị kết quả
-4. Mở bản đồ web
-
-**Dữ liệu demo:**
-- Observer: Đại học Bách Khoa TP.HCM (10.762622°, 106.660172°)
-- Azimuth: 45° (Đông Bắc)
-- Elevation: 30° (Hướng lên)
-- Distance: 1000m
-
----
-
-### 📦 Cách 3: Batch Mode (Nhiều mục tiêu)
-
-#### Xử lý nhiều targets cùng lúc:
-
-```bash
-python main.py
-# Chọn: 3. Batch Mode
+Nhập dữ liệu của bạn:
 ```
+📍 NHẬP VỊ TRÍ QUAN SÁT:
+  Vĩ độ (độ): 10.762622
+  Kinh độ (độ): 106.660172
 
-Batch mode sẽ:
-1. Tính toán 4 targets ở các hướng khác nhau
-2. Tạo bản đồ với tất cả targets
-3. Hiển thị thông tin từng target
-
-**Use case:** Khi cần survey nhiều điểm trong khu vực
-
----
-
-### Cách 4: Chạy từng module riêng lẻ
-
-**Test coordinate transforms:**
-```bash
-python file_to_test/coordinate_transforms.py
-```
-
-**Test sensor fusion:**
-```bash
-python file_to_test/sensor_fusion.py
-```
-
-**Test target calculator:**
-```bash
-python file_to_test/target_calculator.py
-```
-
-**Test webmap viewer:**
-```bash
-python file_to_test/webmap_viewer.py
+🎯 NHẬP THÔNG TIN NGẮM:
+  Góc phương vị (0-360°): 45
+  Khoảng cách (mét): 1000
 ```
 
 ---
@@ -315,92 +183,28 @@ python file_to_test/webmap_viewer.py
   - Simplified interface
   - Input validation
   - Sensor fusion integration
-  
-- **`sensor_fusion.py`**: Xử lý dữ liệu cảm biến
-  - NMEA parser cho GPS
-  - Filtering algorithms (moving average, median, circular mean)
-  - Data quality assessment
-
-#### `visualization/` - Visualization Tools
-
-- **`leaflet_map_viewer.py`**: Pure Leaflet.js web viewer - NEW
-  - Responsive design
-  - Interactive markers
-  - Distance/bearing calculations
-  
-- **`map_viewer.py`**: Matplotlib 2D maps
-- **`plot_utils.py`**: Plotting utilities
-- **`export_utils.py`**: GeoJSON export
-
-#### `simulation/` - Testing & Simulation
-
-- **`scenario_generator.py`**: Tạo test scenarios
-  - Random targets
-  - Pattern-based (grid, circle, line)
-  - Noise injection
-  
-- **`simulator.py`**: Simulation engine
-  - Batch processing
-  - Statistics calculation
-  - Results export
 
 ---
 
-## Kiểm thử
+## 📚 Tài liệu tham khảo (Giai đoạn 1)
 
-### Run Unit Tests
+### Công thức toán học:
 
-```bash
-# Run all tests
-python -m pytest tests/
+**[1]** Sinnott, R. W. (1984). *"Virtues of the Haversine"*. Sky and Telescope, 68(2), 159.
+- Công thức tính khoảng cách trên mặt cầu
 
-# Run specific test
-python tests/test_calculations.py
+**[2]** National Geospatial-Intelligence Agency. *"World Geodetic System 1984 (WGS 84)"*.
+- Hệ tọa độ chuẩn GPS
 
-# With verbose output
-python -m pytest tests/ -v
-```
+**[3]** Hofmann-Wellenhof, B. et al. (2012). *"Global Positioning System: Theory and Practice"*. Springer.
+- Lý thuyết GPS và coordinate systems
 
-### Manual Testing
+### Thư viện sử dụng:
 
-```python
-# Test coordinate conversion
-from core.coordinate_transforms import CoordinateTransforms
+**[4]** Harris, C. R., et al. (2020). *"Array programming with NumPy"*. Nature, 585(7825), 357-362.
+- NumPy cho tính toán vector và ma trận
 
-converter = CoordinateTransforms()
+**[5]** Hunter, J. D. (2007). *"Matplotlib: A 2D graphics environment"*. Computing in Science & Engineering.
+- Matplotlib cho visualization 2D
 
-# Test point
-lat, lon, alt = 10.762622, 106.660172, 10.0
-
-# Geodetic → ECEF → Geodetic (round-trip)
-ecef = converter.geodetic_to_ecef(lat, lon, alt)
-lat2, lon2, alt2 = converter.ecef_to_geodetic(*ecef)
-
-# Check error
-import numpy as np
-lat_err = abs(lat2 - lat) * 111000
-lon_err = abs(lon2 - lon) * 111000 * np.cos(np.radians(lat))
-alt_err = abs(alt2 - alt)
-
-print(f"Errors: lat={lat_err:.6f}m, lon={lon_err:.6f}m, alt={alt_err:.6f}m")
-# Should be < 0.001m
-```
-
-### Simulation Testing
-
-```python
-from simulation.scenario_generator import ScenarioGenerator
-from simulation.simulator import Simulator
-
-# Generate scenario
-generator = ScenarioGenerator(seed=42)
-observer = generator.create_observer_position()
-scenario = generator.create_scenario(observer, num_targets=5, add_noise=True)
-
-# Run simulation
-simulator = Simulator(coordinate_system='ENU')
-results = simulator.run_scenario(scenario, use_sensor_fusion=True)
-
-# Print statistics
-simulator.print_statistics()
-```
+---
