@@ -1,269 +1,267 @@
 """
-main.py
-Chương trình chính để demo tính năng của hệ thống
-
-Chức năng:
-- CLI tương tác
-- Tính toán tọa độ mục tiêu
-- Hiển thị kết quả trực quan trên bản đồ web
-- Xuất kết quả dưới dạng GeoJSON
+main.py - GIAI ĐOẠN 1 (ĐA KTMT)
+Bài toán chỉ tập trung vào yêu cầu Giai đoạn 1:
+- Tính toán 2D cơ bản (azimuth + distance)
+- Bản đồ đơn giản với matplotlib
 
 """
 
 from core.gps_target_system import GPSTargetSystem
-from visualization.webmap_viewer import LeafletMapViewer
+import matplotlib.pyplot as plt
+import numpy as np
 from pathlib import Path
-import sys
 
-class GPSTargetApp:
-    """Application wrapper với error handling"""
+
+class Phase1Calculator:
+    """
+    Calculator đơn giản cho GIAI ĐOẠN 1
+    Chỉ tính toán 2D, không dùng elevation angle
+    """
     
     def __init__(self):
         self.system = GPSTargetSystem('ENU')
-        self.viewer = LeafletMapViewer()
         self.output_dir = Path("output")
         self.output_dir.mkdir(exist_ok=True)
     
-    def get_user_input(self):
-        """Nhận input từ user với validation"""
-        print("\n" + "="*60)
-        print("GPS TARGET SYSTEM - CALCULATOR")
-        print("="*60)
+    def calculate_2d_target(self, observer_lat, observer_lon, 
+                           azimuth, distance):
+        """
+        Tính toán 2D - KHÔNG dùng elevation angle
         
-        try:
-            print("\nOBSERVER POSITION (Vị trí quan sát)")
-            print("-" * 60)
-            obs_lat = float(input("  Vĩ độ (Latitude, độ):  "))
-            obs_lon = float(input("  Kinh độ (Longitude, độ): "))
-            obs_alt = float(input("  Độ cao (Altitude, mét):  "))
+        Input:
+            observer_lat: Vĩ độ người quan sát (độ)
+            observer_lon: Kinh độ người quan sát (độ)
+            azimuth: Góc phương vị (độ, 0-360)
+            distance: Khoảng cách (mét)
             
-            print("\nTARGET INFORMATION (Thông tin ngắm mục tiêu)")
-            print("-" * 60)
-            azimuth = float(input("  Góc phương vị (Azimuth, 0-360°):   "))
-            elevation = float(input("  Góc ngẩng (Elevation, -90 đến 90°): "))
-            distance = float(input("  Khoảng cách (Distance, mét):      "))
-            
-            return obs_lat, obs_lon, obs_alt, azimuth, elevation, distance
+        Output:
+            dict: Tọa độ mục tiêu 2D
+        """
+        # GIAI ĐOẠN 1: Giả sử quan sát ngang (elevation = 0)
+        # GIAI ĐOẠN 2: Sẽ thêm elevation angle thực
         
-        except ValueError as e:
-            print(f"\nLỗi: Vui lòng nhập số hợp lệ!")
-            return None
-        except KeyboardInterrupt:
-            print("\n\nĐã hủy!")
-            sys.exit(0)
-    
-    def run_interactive(self):
-        """Chạy chế độ interactive"""
-        while True:
-            # Get input
-            inputs = self.get_user_input()
-            if inputs is None:
-                continue
-            
-            obs_lat, obs_lon, obs_alt, azimuth, elevation, distance = inputs
-            
-            # Validate
-            try:
-                self.system.validate_input_data(
-                    obs_lat, obs_lon, obs_alt,
-                    azimuth, elevation, distance
-                )
-            except ValueError as e:
-                print(f"\nLỗi validation: {e}")
-                continue
-            
-            # Calculate
-            print("\nĐang tính toán...")
-            try:
-                result = self.system.calculate_target_position(
-                    obs_lat, obs_lon, obs_alt,
-                    azimuth, elevation, distance
-                )
-            except Exception as e:
-                print(f"\nLỗi tính toán: {e}")
-                continue
-            
-            # Display results
-            self.display_results(result)
-            
-            # Create map
-            observer_pos = (obs_lat, obs_lon, obs_alt)
-            target = result['target_geodetic']
-            target_pos = (target['latitude'], target['longitude'], target['altitude'])
-            
-            print("\nĐang tạo bản đồ...")
-            map_path = self.viewer.create_interactive_map(
-                observer_pos=observer_pos,
-                target_pos=target_pos,
-                title="GPS Target Calculation Result",
-                save_path=self.output_dir / "result_map.html",
-                auto_open=True
-            )
-            
-            print(f"Bản đồ đã được lưu: {map_path}")
-            
-            # Ask to continue
-            print("\n" + "="*60)
-            choice = input("\nTiếp tục? (y/n): ").strip().lower()
-            if choice != 'y':
-                break
-    
-    def display_results(self, result):
-        """Hiển thị kết quả đẹp"""
-        print("\n" + "="*60)
-        print("KẾT QUẢ TÍNH TOÁN")
-        print("="*60)
+        observer_alt = 0.0  # Đơn giản hóa: không tính cao độ
+        elevation = 0.0     # Ngang tầm
         
-        target = result['target_geodetic']
-        verification = result['verification']
-        
-        print("\nTỌA ĐỘ MỤC TIÊU:")
-        print(f"  Vĩ độ:   {target['latitude']:.6f}°")
-        print(f"  Kinh độ: {target['longitude']:.6f}°")
-        print(f"  Độ cao:  {target['altitude']:.1f}m")
-        
-        print("\nKIỂM TRA ĐỘ CHÍNH XÁC:")
-        print(f"  Distance error:  {verification['distance_error']:.3f}m")
-        print(f"  Azimuth error:   {verification['azimuth_error']:.4f}°")
-        print(f"  Elevation error: {verification['elevation_error']:.4f}°")
-        
-        if verification['distance_error'] < 0.1:
-            print("\nĐộ chính xác: EXCELLENT")
-        elif verification['distance_error'] < 1.0:
-            print("\nĐộ chính xác: GOOD")
-        else:
-            print("\nĐộ chính xác: ACCEPTABLE")
-
-def run_demo():
-    """Demo mode với dữ liệu mẫu"""
-    print("\n" + "="*60)
-    print("DEMO MODE - GPS TARGET SYSTEM")
-    print("="*60)
-    
-    app = GPSTargetApp()
-    
-    # Demo data (HCMUT area)
-    print("\nSử dụng dữ liệu demo:")
-    observer_pos = (10.762622, 106.660172, 10.0)
-    azimuth = 45.0
-    elevation = 30.0
-    distance = 1000.0
-    
-    print(f"  Observer: {observer_pos[0]:.6f}°, {observer_pos[1]:.6f}°, {observer_pos[2]}m")
-    print(f"  Azimuth: {azimuth}°")
-    print(f"  Elevation: {elevation}°")
-    print(f"  Distance: {distance}m")
-    
-    # Calculate
-    result = app.system.calculate_target_position(
-        observer_pos[0], observer_pos[1], observer_pos[2],
-        azimuth, elevation, distance
-    )
-    
-    # Display
-    app.display_results(result)
-    
-    # Create map
-    target = result['target_geodetic']
-    target_pos = (target['latitude'], target['longitude'], target['altitude'])
-    
-    print("\nĐang tạo bản đồ...")
-    app.viewer.create_interactive_map(
-        observer_pos=observer_pos,
-        target_pos=target_pos,
-        title="GPS Target System - Demo",
-        save_path=app.output_dir / "demo_map.html",
-        auto_open=True
-    )
-    
-    print("\nDemo hoàn tất!")
-
-
-def run_batch_mode():
-    """Batch mode - tính nhiều targets"""
-    print("\n" + "="*60)
-    print("BATCH MODE - MULTIPLE TARGETS")
-    print("="*60)
-    
-    app = GPSTargetApp()
-    
-    # Observer
-    observer_pos = (10.762622, 106.660172, 10.0)
-    print(f"\nObserver: {observer_pos[0]:.6f}°, {observer_pos[1]:.6f}°")
-    
-    # Multiple targets
-    target_specs = [
-        (0, 0, 1000, "North, 1km"),
-        (45, 10, 1500, "NE, 1.5km, 10° up"),
-        (90, 0, 2000, "East, 2km"),
-        (180, -5, 1200, "South, 1.2km, 5° down"),
-    ]
-    
-    print(f"\nCalculating {len(target_specs)} targets...")
-    
-    targets = []
-    for i, (az, el, dist, desc) in enumerate(target_specs, 1):
-        result = app.system.calculate_target_position(
-            observer_pos[0], observer_pos[1], observer_pos[2],
-            az, el, dist
+        # Sử dụng core system (đã fix)
+        result = self.system.calculate_target_position(
+            observer_lat, observer_lon, observer_alt,
+            azimuth, elevation, distance
         )
         
+        # Trả về chỉ tọa độ 2D (lat, lon)
         target = result['target_geodetic']
-        targets.append((
-            target['latitude'],
-            target['longitude'],
-            target['altitude'],
-            f"T{i}: {desc}"
-        ))
         
-        print(f"Target {i}: {target['latitude']:.6f}°, {target['longitude']:.6f}°")
+        return {
+            'latitude': target['latitude'],
+            'longitude': target['longitude'],
+            'distance': distance,
+            'azimuth': azimuth,
+            'error': result['verification']['distance_error']
+        }
     
-    # Create multi-target map
-    print("\nCreating multi-target map...")
-    app.viewer.create_multi_target_map(
-        observer_pos=observer_pos,
-        targets=targets,
-        title="Batch Mode - Multiple Targets",
-        save_path=app.output_dir / "batch_map.html",
-        auto_open=True
+    def plot_simple_map(self, observer_pos, target_pos, save_path=None):
+        """
+        Vẽ bản đồ 2D đơn giản với matplotlib (Giai đoạn 1)
+        
+        Input:
+            observer_pos: tuple (lat, lon)
+            target_pos: tuple (lat, lon)
+            save_path: Đường dẫn lưu (optional)
+        """
+        fig, ax = plt.subplots(figsize=(10, 8))
+        
+        # Chuyển sang offset (km) để dễ nhìn
+        obs_lat, obs_lon = observer_pos
+        tar_lat, tar_lon = target_pos
+        
+        # East-West offset (km)
+        dx = (tar_lon - obs_lon) * 111 * np.cos(np.radians(obs_lat))
+        # North-South offset (km)
+        dy = (tar_lat - obs_lat) * 111
+        
+        # Plot observer
+        ax.plot(0, 0, 'go', markersize=15, label='Người quan sát')
+        ax.text(0, -0.05, 'Observer', ha='center', fontsize=10, fontweight='bold')
+        
+        # Plot target
+        ax.plot(dx, dy, 'ro', markersize=15, label='Mục tiêu')
+        ax.text(dx, dy + 0.05, 'Target', ha='center', fontsize=10, fontweight='bold')
+        
+        # Draw line
+        ax.plot([0, dx], [0, dy], 'k--', linewidth=2, alpha=0.5)
+        
+        # Calculate distance
+        distance = np.sqrt(dx**2 + dy**2)
+        mid_x, mid_y = dx/2, dy/2
+        ax.text(mid_x, mid_y, f'{distance:.2f} km', 
+               fontsize=12, bbox=dict(boxstyle='round', facecolor='yellow', alpha=0.5))
+        
+        # North arrow
+        ax.arrow(0, 0, 0, 0.5, head_width=0.1, head_length=0.08, 
+                fc='blue', ec='blue', linewidth=2)
+        ax.text(0, 0.6, 'N', ha='center', fontsize=14, fontweight='bold', color='blue')
+        
+        # Styling
+        ax.set_xlabel('East-West (km)', fontsize=12)
+        ax.set_ylabel('North-South (km)', fontsize=12)
+        ax.set_title('Bản đồ vị trí mục tiêu (2D)\nGIAI ĐOẠN 1 - ĐA KTMT', 
+                    fontsize=14, fontweight='bold')
+        ax.grid(True, alpha=0.3)
+        ax.axis('equal')
+        ax.legend(loc='upper right', fontsize=10)
+        
+        # Add coordinates text
+        info_text = f'Observer: ({obs_lat:.6f}°, {obs_lon:.6f}°)\n'
+        info_text += f'Target: ({tar_lat:.6f}°, {tar_lon:.6f}°)'
+        ax.text(0.02, 0.98, info_text, transform=ax.transAxes,
+               fontsize=9, verticalalignment='top',
+               bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
+        
+        plt.tight_layout()
+        
+        if save_path:
+            plt.savefig(save_path, dpi=150, bbox_inches='tight')
+            print(f"✓ Đã lưu bản đồ: {save_path}")
+        
+        return fig, ax
+
+
+def run_phase1_demo():
+    """Demo cho GIAI ĐOẠN 1"""
+    print("\n" + "="*60)
+    print("GIAI ĐOẠN 1 - ĐỒ ÁN KỸ THUẬT MÁY TÍNH")
+    print("Tính toán tọa độ mục tiêu 2D")
+    print("="*60)
+    
+    calc = Phase1Calculator()
+    
+    # Dữ liệu test
+    print("\nDỮ LIỆU ĐẦU VÀO:")
+    observer_lat = 10.762622   # HCMUT
+    observer_lon = 106.660172
+    azimuth = 45.0            # Đông Bắc
+    distance = 1000.0         # 1km
+    
+    print(f"  Vị trí quan sát: {observer_lat:.6f}°, {observer_lon:.6f}°")
+    print(f"  Góc phương vị: {azimuth}°")
+    print(f"  Khoảng cách: {distance}m")
+    
+    # Tính toán
+    print("\nĐang tính toán...")
+    result = calc.calculate_2d_target(
+        observer_lat, observer_lon, azimuth, distance
     )
     
-    print("\nBatch processing complete!")
+    # Hiển thị kết quả
+    print("\n" + "="*60)
+    print("KẾT QUẢ TÍNH TOÁN")
+    print("="*60)
+    print(f"\nTỌA ĐỘ MỤC TIÊU (2D):")
+    print(f"  Vĩ độ:  {result['latitude']:.6f}°")
+    print(f"  Kinh độ: {result['longitude']:.6f}°")
+    print(f"\nĐộ chính xác:")
+    print(f"  Sai số: {result['error']:.3f}m")
+    
+    if result['error'] < 0.1:
+        print("Độ chính xác: XUẤT SẮC")
+    elif result['error'] < 1.0:
+        print("Độ chính xác: TỐT")
+    else:
+        print("Độ chính xác: CHẤP NHẬN ĐƯỢC")
+    
+    # Vẽ bản đồ
+    print("\nĐang tạo bản đồ 2D...")
+    calc.plot_simple_map(
+        observer_pos=(observer_lat, observer_lon),
+        target_pos=(result['latitude'], result['longitude']),
+        save_path="output/phase1_map.png"
+    )
+    
+    plt.show()
+
+    print("\nKết quả đã lưu:")
+    print("  - Bản đồ 2D: output/phase1_map.png")
+
+
+def run_phase1_interactive():
+    """Chế độ nhập liệu cho Giai đoạn 1"""
+    print("\n" + "="*60)
+    print("GIAI ĐOẠN 1 - TÍNH TOÁN TỌA ĐỘ 2D")
+    print("="*60)
+    
+    calc = Phase1Calculator()
+    
+    try:
+        print("\nNHẬP VỊ TRÍ QUAN SÁT:")
+        obs_lat = float(input("  Vĩ độ (độ): "))
+        obs_lon = float(input("  Kinh độ (độ): "))
+        
+        print("\nNHẬP THÔNG TIN NGẮM:")
+        azimuth = float(input("  Góc phương vị (0-360°): "))
+        distance = float(input("  Khoảng cách (mét): "))
+        
+        # Validate
+        if not (0 <= azimuth < 360):
+            print("Góc phương vị phải trong khoảng [0, 360)")
+            return
+        
+        if distance <= 0:
+            print("Khoảng cách phải > 0")
+            return
+        
+        # Calculate
+        print("\nĐang tính toán...")
+        result = calc.calculate_2d_target(obs_lat, obs_lon, azimuth, distance)
+        
+        # Display
+        print("\n" + "="*60)
+        print("KẾT QUẢ")
+        print("="*60)
+        print(f"\nTọa độ mục tiêu:")
+        print(f"  Vĩ độ:  {result['latitude']:.6f}°")
+        print(f"  Kinh độ: {result['longitude']:.6f}°")
+        print(f"\nSai số: {result['error']:.3f}m")
+        
+        # Plot
+        choice = input("\nVẽ bản đồ? (y/n): ").lower()
+        if choice == 'y':
+            calc.plot_simple_map(
+                (obs_lat, obs_lon),
+                (result['latitude'], result['longitude']),
+                "output/phase1_custom.png"
+            )
+            plt.show()
+    
+    except ValueError:
+        print("\nLỗi: Vui lòng nhập số hợp lệ!")
+    except Exception as e:
+        print(f"\nLỗi: {e}")
+
 
 def main():
-    """Main entry point"""
+    """Main menu cho Giai đoạn 1"""
     print("\n" + "="*60)
-    print(" "*10 + "GPS TARGET SYSTEM")
-    print(" "*5 + "Tính toán tọa độ mục tiêu từ GPS + góc ngắm + khoảng cách")
+    print("     GIAI ĐOẠN 1 - ĐỒ ÁN KỸ THUẬT MÁY TÍNH")
+    print("     Tính toán tọa độ mục tiêu 2D")
     print("="*60)
     
     print("\nChọn chế độ:")
-    print("  1. Interactive Mode (Nhập tay)")
-    print("  2. Demo Mode (Dữ liệu mẫu)")
-    print("  3. Batch Mode (Nhiều mục tiêu)")
-    print("  4. Exit")
+    print("  1. Demo (dữ liệu mẫu)")
+    print("  2. Interactive (nhập liệu)")
+    print("  3. Exit")
     
-    try:
-        choice = input("\nLựa chọn (1-4): ").strip()
-        
-        if choice == '1':
-            app = GPSTargetApp()
-            app.run_interactive()
-        elif choice == '2':
-            run_demo()
-        elif choice == '3':
-            run_batch_mode()
-        elif choice == '4':
-            print("\nExit!")
-        else:
-            print("\nLựa chọn không hợp lệ!")
+    choice = input("\nLựa chọn (1-3): ").strip()
     
-    except KeyboardInterrupt:
-        print("\n\nĐã hủy!")
-    except Exception as e:
-        print(f"\nLỗi: {e}")
-        import traceback
-        traceback.print_exc()
+    if choice == '1':
+        run_phase1_demo()
+    elif choice == '2':
+        run_phase1_interactive()
+    elif choice == '3':
+        print("\nExit!")
+    else:
+        print("\nLựa chọn không hợp lệ!")
+
 
 if __name__ == "__main__":
     main()
